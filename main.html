@@ -1,6 +1,109 @@
 <html>
-    <head> </head>
+    <head>
+        <style>
+            body {
+                width: 240px;
+                padding: 16px;
+                margin: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background: #1a1a1e;
+                color: #e4e4e7;
+                user-select: none;
+            }
+
+            .container {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .label {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+                font-weight: 500;
+            }
+
+            .label .icon {
+                font-size: 18px;
+            }
+
+            /* Toggle switch */
+            .toggle {
+                position: relative;
+                width: 40px;
+                height: 22px;
+                flex-shrink: 0;
+            }
+
+            .toggle input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+                position: absolute;
+            }
+
+            .slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: #3f3f46;
+                border-radius: 11px;
+                transition: background 0.2s ease;
+            }
+
+            .slider::before {
+                content: "";
+                position: absolute;
+                width: 18px;
+                height: 18px;
+                left: 2px;
+                bottom: 2px;
+                background: #e4e4e7;
+                border-radius: 50%;
+                transition:
+                    transform 0.2s ease,
+                    background 0.2s ease;
+            }
+
+            .toggle input:checked + .slider {
+                background: #22c55e;
+            }
+
+            .toggle input:checked + .slider::before {
+                transform: translateX(18px);
+                background: #ffffff;
+            }
+
+            .toggle input:disabled + .slider {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            .status {
+                font-size: 12px;
+                color: #a1a1aa;
+                margin-top: 4px;
+                text-align: right;
+            }
+        </style>
+    </head>
     <body>
+        <div class="container">
+            <span class="label">
+                <span class="icon">🪄</span>
+                Chrome Butler
+            </span>
+            <label class="toggle">
+                <input type="checkbox" id="toggle" />
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="status" id="status">loading...</div>
         <script src="extension-controller.js"></script>
     </body>
 </html>
