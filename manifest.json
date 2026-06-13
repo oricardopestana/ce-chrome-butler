@@ -20,5 +20,11 @@
       "js": ["scripts/main.js"],
       "matches": ["<all_urls>"]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/command-palette.js", "dist/command-palette.css"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

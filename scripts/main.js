@@ -22,32 +22,31 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-let handleKeydown = null;
-
 function init() {
-  // Run Butler features on this page
   console.log("[Chrome Butler] enabled");
 
-  if (handleKeydown) return; // already listening
+  const existing = document.getElementById("cb-container");
+  if (existing) return;
 
-  handleKeydown = (event) => {
-    // Alt+K (Windows/Linux) and Option+K (macOS)
-    if (event.altKey && event.code === "KeyK") {
-      event.preventDefault();
-      console.log("[Chrome Butler] Alt+K pressed");
-      // Future: command palette or action runner
-    }
-  };
+  // Inject CSS first
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = chrome.runtime.getURL("dist/command-palette.css");
+  document.head.appendChild(link);
 
-  document.addEventListener("keydown", handleKeydown);
+  // Inject JS bundle
+  const script = document.createElement("script");
+  script.src = chrome.runtime.getURL("dist/command-palette.js");
+  script.onload = () => script.remove();
+  (document.head || document.documentElement).appendChild(script);
 }
 
 function cleanup() {
-  // Undo any DOM changes when disabled
   console.log("[Chrome Butler] disabled");
 
-  if (handleKeydown) {
-    document.removeEventListener("keydown", handleKeydown);
-    handleKeydown = null;
-  }
+  const container = document.getElementById("cb-container");
+  if (container) container.remove();
+
+  const link = document.querySelector('link[href*="command-palette.css"]');
+  if (link) link.remove();
 }
