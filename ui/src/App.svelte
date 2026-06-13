@@ -7,12 +7,47 @@
     let resultsEl;
     let allBookmarks = [];
     let selectedIndex = 0;
+    let statusMessage = "";
 
+    // Derive the page-specific bookmark command dynamically.
+    // When allBookmarks is loaded, we check if the current URL is bookmarked.
+    $: existingForCurrentUrl = allBookmarks.filter((b) => b.url === window.location.href);
+
+    $: dynamicCommands =
+        existingForCurrentUrl.length > 0
+            ? [
+                  {
+                      kind: "command",
+                      id: "remove-bookmark",
+                      title: "Remove Bookmark",
+                      keywords: "remove delete unbookmark current page",
+                      icon: "🗑️",
+                      bookmarkIds: existingForCurrentUrl.map((b) => b.id),
+                  },
+              ]
+            : [
+                  {
+                      kind: "command",
+                      id: "bookmark-current",
+                      title: "Bookmark Current Page",
+                      keywords: "bookmark save add current page",
+                      icon: "🔖",
+                  },
+              ];
+
+    $: matchingCommands = getMatchingCommands(dynamicCommands, query);
     $: filteredBookmarks = getFilteredBookmarks(allBookmarks, query);
+    $: allItems = [...matchingCommands, ...filteredBookmarks];
 
-    // Reset selection whenever the filtered list changes
-    $: if (filteredBookmarks.length > 0) {
+    // Reset selection whenever the results change
+    $: if (allItems.length > 0) {
         selectedIndex = 0;
+    }
+
+    function getMatchingCommands(cmds, q) {
+        if (!q.trim()) return cmds;
+        const lower = q.toLowerCase();
+        return cmds.filter((c) => c.title.toLowerCase().includes(lower) || c.keywords.toLowerCase().includes(lower));
     }
 
     function getFilteredBookmarks(bookmarks, q) {
@@ -43,6 +78,7 @@
             el.style.display = visible ? "block" : "none";
         }
         if (visible) {
+            statusMessage = "";
             // Request bookmarks from the content script bridge
             window.postMessage({ type: "butler:get-bookmarks" }, "*");
             requestAnimationFrame(() => {
@@ -51,6 +87,7 @@
         } else {
             query = "";
             allBookmarks = [];
+            statusMessage = "";
         }
     }
 
@@ -60,6 +97,7 @@
         if (el) el.style.display = "none";
         query = "";
         allBookmarks = [];
+        statusMessage = "";
     }
 
     function handleBackdropClick(e) {
@@ -76,7 +114,15 @@
     function handleWindowMessage(event) {
         const { type, bookmarks } = event.data || {};
         if (type === "butler:bookmarks" && bookmarks) {
-            allBookmarks = bookmarks;
+            allBookmarks = [...bookmarks].sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
+        }
+        if (type === "butler:bookmark-created") {
+            statusMessage = "Bookmark added!";
+            setTimeout(close, 800);
+        }
+        if (type === "butler:bookmark-removed") {
+            statusMessage = "Bookmark removed!";
+            setTimeout(close, 800);
         }
     }
 
@@ -92,30 +138,50 @@
         window.open(url, "_blank");
     }
 
+    function bookmarkCurrentPage() {
+        const url = window.location.href;
+        const title = document.title;
+        window.postMessage({ type: "butler:create-bookmark", url, title }, "*");
+    }
+
+    function removeBookmark(ids) {
+        window.postMessage({ type: "butler:remove-bookmark", ids }, "*");
+    }
+
+    function executeItem(item) {
+        if (item.id === "bookmark-current") {
+            bookmarkCurrentPage();
+        } else if (item.id === "remove-bookmark") {
+            removeBookmark(item.bookmarkIds);
+            // Don't close immediately — wait for the success confirmation
+        } else {
+            // It's a bookmark
+            openBookmark(item.url);
+            close();
+        }
+    }
+
     function handleKeydown(e) {
         if (e.key === "Escape") {
             close();
             return;
         }
 
-        const results = filteredBookmarks;
-
-        if (results.length === 0) return;
+        if (allItems.length === 0) return;
 
         if (e.key === "ArrowDown") {
             e.preventDefault();
-            selectedIndex = (selectedIndex + 1) % results.length;
+            selectedIndex = (selectedIndex + 1) % allItems.length;
             scrollResultIntoView();
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
-            selectedIndex = (selectedIndex - 1 + results.length) % results.length;
+            selectedIndex = (selectedIndex - 1 + allItems.length) % allItems.length;
             scrollResultIntoView();
         } else if (e.key === "Enter") {
             e.preventDefault();
-            const selected = results[selectedIndex];
+            const selected = allItems[selectedIndex];
             if (selected) {
-                openBookmark(selected.url);
-                close();
+                executeItem(selected);
             }
         }
     }
@@ -133,9 +199,8 @@
         selectedIndex = index;
     }
 
-    function resultClick(bookmark) {
-        openBookmark(bookmark.url);
-        close();
+    function resultClick(item) {
+        executeItem(item);
     }
 
     function domainLetter(url) {
@@ -146,6 +211,10 @@
             return "∗";
         }
     }
+
+    function isCommand(item) {
+        return item.kind === "command";
+    }
 </script>
 
 <div class="backdrop" on:click={handleBackdropClick} role="presentation">
@@ -154,11 +223,44 @@
             bind:this={inputEl}
             bind:value={query}
             class="input"
-            placeholder="Search bookmarks..."
+            placeholder="Search bookmarks or type a command..."
             on:keydown={handleKeydown}
         />
         <div class="results" bind:this={resultsEl} role="listbox">
-            {#if query && filteredBookmarks.length === 0}
+            {#if statusMessage}
+                <div class="status-bar">{statusMessage}</div>
+            {:else if allItems.length > 0}
+                {#each allItems as item, i (isCommand(item) ? item.id : item.url)}
+                    <div
+                        class="result-item"
+                        class:selected={i === selectedIndex}
+                        class:command={isCommand(item)}
+                        role="option"
+                        aria-selected={i === selectedIndex}
+                        tabindex="-1"
+                        on:mouseenter={() => resultMouseEnter(i)}
+                        on:mousedown={(e) => {
+                            e.preventDefault();
+                            resultClick(item);
+                        }}
+                    >
+                        {#if isCommand(item)}
+                            <span class="command-icon">{item.icon}</span>
+                            <div class="info">
+                                <div class="title">{item.title}</div>
+                            </div>
+                        {:else}
+                            <span class="domain-badge">{domainLetter(item.url)}</span>
+                            <div class="info">
+                                <div class="title">{item.title}</div>
+                                <div class="url">{item.url}</div>
+                            </div>
+                        {/if}
+                    </div>
+                {/each}
+            {:else if query && allBookmarks.length > 0}
+                <div class="empty">No bookmarks match "{query}"</div>
+            {:else if query}
                 <div class="empty">
                     {#if allBookmarks.length === 0}
                         Loading bookmarks...
@@ -166,28 +268,6 @@
                         No bookmarks match "{query}"
                     {/if}
                 </div>
-            {:else if filteredBookmarks.length > 0}
-                {#each filteredBookmarks as bookmark, i (bookmark.url)}
-                    <div
-                        class="result-item"
-                        class:selected={i === selectedIndex}
-                        role="option"
-                        aria-selected={i === selectedIndex}
-                        tabindex="-1"
-                        on:mouseenter={() => resultMouseEnter(i)}
-                        on:mousedown={(e) => {
-                            // Use mousedown to prevent input blur racing with click
-                            e.preventDefault();
-                            resultClick(bookmark);
-                        }}
-                    >
-                        <span class="domain-badge">{domainLetter(bookmark.url)}</span>
-                        <div class="info">
-                            <div class="title">{bookmark.title}</div>
-                            <div class="url">{bookmark.url}</div>
-                        </div>
-                    </div>
-                {/each}
             {/if}
         </div>
     </div>
@@ -241,6 +321,15 @@
         min-height: 48px;
     }
 
+    .status-bar {
+        padding: 12px 16px;
+        color: #22c55e;
+        font-size: 13px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-align: center;
+        font-weight: 500;
+    }
+
     .empty {
         padding: 12px 16px;
         color: #71717a;
@@ -265,6 +354,22 @@
 
     .result-item:hover {
         background: #27272a;
+    }
+
+    .result-item.command .title {
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .command-icon {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
     }
 
     .domain-badge {

@@ -101,4 +101,23 @@ window.addEventListener("message", (event) => {
       window.postMessage({ type: "butler:bookmarks", bookmarks }, "*");
     });
   }
+
+  if (type === "butler:create-bookmark") {
+    const { url, title } = event.data;
+    chrome.runtime.sendMessage({ type: "butler:create-bookmark", url, title }, () => {
+      // Invalidate the cache so next palette open reflects the new bookmark
+      cachedBookmarks = null;
+      bookmarkLoadPromise = null;
+      window.postMessage({ type: "butler:bookmark-created" }, "*");
+    });
+  }
+
+  if (type === "butler:remove-bookmark") {
+    const { ids } = event.data;
+    chrome.runtime.sendMessage({ type: "butler:remove-bookmark", ids }, () => {
+      cachedBookmarks = null;
+      bookmarkLoadPromise = null;
+      window.postMessage({ type: "butler:bookmark-removed" }, "*");
+    });
+  }
 });
