@@ -52,8 +52,90 @@
 
     function getFilteredBookmarks(bookmarks, q) {
         if (!q.trim()) return [];
-        const lower = q.toLowerCase();
-        return bookmarks.filter((b) => b.title.toLowerCase().includes(lower) || b.url.toLowerCase().includes(lower));
+        const query = q.toLowerCase().trim();
+
+        const scored = [];
+        for (const b of bookmarks) {
+            const score = scoreBookmark(b, query);
+            if (score > 0) {
+                scored.push({ bookmark: b, score });
+            }
+        }
+
+        scored.sort((a, b) => b.score - a.score);
+        return scored.map((s) => s.bookmark);
+    }
+
+    function scoreBookmark(bookmark, query) {
+        const title = bookmark.title.toLowerCase();
+        const url = bookmark.url.toLowerCase();
+        let score = 0;
+
+        // --- 1. Exact substring match (highest priority) ---
+        if (title.includes(query)) score += 80;
+        if (url.includes(query)) score += 40;
+
+        // --- 2. Word-by-word: each query word appears in the title or URL ---
+        const qWords = query.split(/\s+/).filter(Boolean);
+        if (qWords.length > 1) {
+            const titleWords = title.split(/\s+/);
+            const urlWords = url.split(/\s+/);
+            let titleHits = 0;
+            let urlHits = 0;
+            for (const w of qWords) {
+                if (titleWords.some((tw) => tw.includes(w))) titleHits++;
+                if (urlWords.some((uw) => uw.includes(w))) urlHits++;
+            }
+            score += (titleHits / qWords.length) * 50;
+            score += (urlHits / qWords.length) * 15;
+        }
+
+        // --- 3. Normalized match (strip non-alphanumeric) ---
+        const titleNorm = title.replace(/[^a-z0-9]/g, "");
+        const urlNorm = url.replace(/[^a-z0-9]/g, "");
+        const qNorm = query.replace(/[^a-z0-9]/g, "");
+
+        if (titleNorm.includes(qNorm)) score += 50;
+        else if (urlNorm.includes(qNorm)) score += 20;
+
+        // --- 4. Fuzzy character sequence in title ---
+        let ti = 0;
+        let qi = 0;
+        let firstPos = -1;
+        let lastPos = -1;
+        while (ti < titleNorm.length && qi < qNorm.length) {
+            if (titleNorm[ti] === qNorm[qi]) {
+                if (firstPos === -1) firstPos = ti;
+                lastPos = ti;
+                qi++;
+            }
+            ti++;
+        }
+
+        if (qi === qNorm.length) {
+            // All query characters matched in order in the title
+            const span = lastPos - firstPos + 1;
+            const compactness = Math.max(0, 20 - (span - qNorm.length));
+            score += 25 + compactness;
+        } else {
+            // Fallback: fuzzy match against URL
+            ti = 0;
+            qi = 0;
+            while (ti < urlNorm.length && qi < qNorm.length) {
+                if (urlNorm[ti] === qNorm[qi]) qi++;
+                ti++;
+            }
+            if (qi === qNorm.length) score += 10;
+        }
+
+        // --- 5. Acronym/initials match for multi-word titles ---
+        const splitTitle = title.split(/\s+/).filter((w) => w.length > 0);
+        if (splitTitle.length > 1) {
+            const initials = splitTitle.map((w) => w[0]).join("");
+            if (initials.includes(qNorm)) score += 15;
+        }
+
+        return score;
     }
 
     function handleGlobalKeydown(e) {
