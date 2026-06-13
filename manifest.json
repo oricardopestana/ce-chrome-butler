@@ -11,10 +11,13 @@
     "512": "images/icon-512.png"
   },
   "manifest_version": 3,
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
   "action": {
     "default_popup": "main.html"
   },
-  "permissions": ["storage"],
+  "permissions": ["storage", "bookmarks"],
   "content_scripts": [
     {
       "js": ["scripts/main.js"],
